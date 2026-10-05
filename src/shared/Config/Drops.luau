@@ -21,7 +21,9 @@ return TableUtil.deepFreeze({
 	DropScatter = 3,
 	-- Keep items this far inside the pad's edge.
 	PadInset = 2,
-	-- Minimum seconds between merge/move requests per player (server rate limit).
+	-- Items taken out of storage land this many studs from the hero.
+	WithdrawRadius = 5,
+	-- Minimum seconds between loot/inventory requests per player (server rate limit).
 	RequestCooldown = 0.05,
 	-- Idle pooled Parts kept per kind; extras are destroyed.
 	PoolMaxIdlePerKind = 60,

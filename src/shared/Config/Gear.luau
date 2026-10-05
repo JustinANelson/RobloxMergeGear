@@ -11,6 +11,9 @@ return TableUtil.deepFreeze({
 
 	Slots = { "Helmet", "Armor", "Weapon", "Boots" } :: { Types.Slot },
 
+	-- Qualities in ascending order. Phase 3 appends Refined, Unique, Elite, Super.
+	Qualities = { "Normal" } :: { Types.Quality },
+
 	-- Kind -> slot it equips into. statMultiplier lets Phase 2 weapon kinds differ (e.g. Bow 0.9 dmg).
 	Kinds = {
 		Helmet = { slot = "Helmet", displayName = "Helmet", statMultiplier = 1 },

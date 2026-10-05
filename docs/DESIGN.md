@@ -20,6 +20,10 @@ Status: MVP planning done, Milestone 1 implemented. `docs/ARCHITECTURE.md` is th
 | D14 | Drag uses a **local ghost + server confirmation**: the real item only moves when the server says so, and the client snaps back on timeout | No client authority over items, and rejected requests still look smooth |
 | D15 | Ground item **positions aren't saved**; rejoining scatters them randomly on the pad | Keeps the save small (counts only); exact layout has little value |
 | D16 | Merging A onto B keeps **B's spot**; A disappears | Matches the mental model of "drop this on that" |
+| D17 | **Storage is unlimited** in the MVP | Simplest; the brief's Phase 4 "extra storage" purchase implies a cap later. It can be added as an upgrade/config value without a data change |
+| D18 | Items displaced from a slot (equip over, unequip) always go to **storage**, never the ground | The ground can be full; storage can't, so nothing is ever lost |
+| D19 | All UI is **built in code** (`client/Util/Ui`), not in Studio | Keeps UI in git and reviewable, consistent with the files-as-source-of-truth rule; can move to a UI library later |
+| D20 | Drag a ground item **onto the Storage button** to store it, **onto your hero** to equip it | Reuses the drag interaction instead of adding per-item menus; works for mouse and touch |
 | D13 | New saves get a **+1 starter set** (all 4 slots), granted once via the `starterKitGranted` flag (`server/Data/NewPlayer`); rebirth re-equips it | An empty-handed hero (5 DPS, 100 HP) couldn't survive Grunt +1. It can't go in the template: Reconcile recurses and would refill emptied slots on every join |
 | D12 | ProfileStore is vendored at `src/server/Vendor` (official source, license in `ThirdParty/`) | Works without Wally; swap to `lm-loleris/profilestore` via Wally whenever you like |
 
@@ -38,7 +42,7 @@ ServerScriptService.Server       (src/server)
   init.server   creates remotes, loads Services, runs Init on all, then Start on all
   Data/         Migrations (schema steps), NewPlayer (one-time grants)
   Loot/         ItemPool (creates/dresses/recycles ground item Parts)
-  Util/         RateLimit (per-player remote cooldowns)
+  Util/         RateLimit (per-player remote cooldowns), Validate (remote-arg checks, reach)
   Vendor/       ProfileStore
   Services/
     DataService       ProfileStore sessions, migrations, replication, Changed signal        [M1] ✅
@@ -49,18 +53,22 @@ ServerScriptService.Server       (src/server)
     CombatService     hero stats → Humanoid, auto-attack, damage, GearScore attribute      [M2] ✅
     EconomyService    only gold writer, coins, magnet (upgrades M5, offline M6)            [M2] ✅
     LootService       drops, ground cap/overflow, merge/move validation, rejoin restore    [M3] ✅
-    InventoryService  storage ↔ ground ↔ equipped transfers                                [M4]
+    InventoryService  storage ↔ ground ↔ equipped transfers (equip, unequip, store, withdraw) [M4] ✅
     CastleService     capture battles, ownership, income ticks                             [M6]
     RebirthService    eligibility + reset                                                  [M7]
 StarterPlayerScripts.Client      (src/client)
   Util/Fx           client-only FX helpers (pop, floating text, tween-then-destroy)
+  Util/Ui           UI construction helpers + theme (window, button, text, list)
   Controllers/
     DataController      read-only mirror of the player's save + change signals            [M1] ✅
     HudController       gold / gear score / drop tier                                      [M1] ✅
     CombatFxController  damage numbers, hit slashes, death puffs, coin pickup              [M2] ✅
     DragController      drag ground items → RequestMerge / RequestMove                     [M3] ✅
     LootFxController    drop and merge pops                                                [M3] ✅
-    PanelsController    equipment, storage, upgrades, castle popup, rebirth, index panels  [M4+]
+    MenuController      left menu bar; opens one panel at a time; buttons double as drop targets [M4] ✅
+    EquipmentController slots, per-item contribution, hero totals, Gear Score, Unequip    [M4] ✅
+    StorageController   stored stacks with Equip / Take out, ground + storage counts      [M4] ✅
+    (future panels)     Upgrades [M5], castle popup [M6], Rebirth + Index [M7]: one controller each, registered via MenuController:AddPanel
 ```
 
 **Lifecycle.** `Init()` sets up the module's own state, signals and remotes; it must not yield or call other services. `Start()` runs after every Init, so it may call other services, connect players and yield.
@@ -78,6 +86,13 @@ StarterPlayerScripts.Client      (src/client)
 - *Merge.* The client sends `RequestMerge(sourceId, targetId)`. The server checks rate limit → integer ids → both items exist and are owned by the sender → `Gear.canMerge` → the target is within `MaxInteractDistance` of the hero. Then: `ground` −1 source, −1 target, +1 result; the source Part is released; the target Part is re-dressed in place as the result; `stats.merges` +1; `index` updated.
 - *Move.* The client sends `RequestMove(itemId, point)`. The server checks rate limit → id → Vector3 without NaN → owned item → point lies on the sender's pad → within reach, then re-places the Part. No data change.
 - *Client (`DragController`).* It never moves the real Part. It hides the real Part locally (`LocalTransparencyModifier`) and drags a ghost copy. A Highlight shows green or red over a merge target. On release it predicts the outcome: an invalid merge or off-pad drop snaps back immediately without sending anything. Otherwise it sends the request and waits up to 1 s for the result to replicate (source Part removed, or Part moved), then snaps back if nothing arrives. Touch drags freeze the camera (`Scriptable`) so dragging doesn't also orbit it.
+
+**Inventory (M4).**
+- *Three places an item can be:* `data.ground` (physical, LootService), `data.inventory` (storage counts), or `data.equipped` (one per slot). `InventoryService` moves items between them, and every move changes both sides in the same step (D7).
+- *Requests:* `RequestEquipFromStorage(kind, quality, plus)`, `RequestEquipFromGround(itemId)`, `RequestUnequip(slot)`, `RequestStore(itemId)`, `RequestWithdraw(kind, quality, plus)`. Each one: rate limit → `Gear.isValidItem` / `Validate.isId` / slot check → ownership (has the count, or owns the ground item) → reach for ground items → act.
+- *Displaced items always go to storage* (D18). Equipping over an occupied slot or unequipping moves the old item to storage, so nothing can be lost. Withdraw places the item about 5 studs from the hero (or at a random pad spot if the hero isn't on the pad) and fails, changing nothing, when the ground is full.
+- *LootService API used here:* `PlaceOnGround(player, item, point?)` (false when full; no storage fallback, no index), `GetGroundItem(player, id)`, `TakeGroundItem(player, id)` (un-counts from `data.ground`; the caller must place the item elsewhere), `GroundCount(player)`. `GiveItem` (new items) is built on `PlaceOnGround` and falls back to storage.
+- *Client:* `MenuController` owns the left menu bar (Gear, Storage) and opens one panel at a time. Panels are built in code with `Util/Ui` (D19). Dragging a ground item onto the **Storage** button stores it, and dragging it onto **your own hero** equips it (D20). `DragController` checks the button's on-screen bounds and raycasts against the local character. Panels compute stats with the same `Formulas` as the server, so the displayed numbers always match.
 
 ## 2. Save schema (v1)
 
@@ -151,7 +166,7 @@ All numbers live in `src/shared/Config/*.luau`; formulas live in `src/shared/For
 | **1. Foundation** ✅ | Rojo layout, Net, ProfileStore data + migrations + replication, generated map, zone assignment, HUD, debug commands | You spawn in your own named zone, the HUD shows gold/GS/Drop Tier, `/gold` and `/equip` update it, and gold persists across sessions. A 2-player test server gives each player a different zone |
 | **2. Enemies & combat** ✅ | EnemyService spawner (cap, interval), chase-and-hit AI, hero auto-attack, HP/death/respawn, gold coins + magnet, EconomyService.AddGold. *Pulled forward from M4: gear stats are applied to the Humanoid and `GearScore` is a player attribute* | Enemies stream in, you kill them automatically, gold rises; you can die and respawn |
 | **3. Ground loot & merging** ✅ | Drops by weight at Drop Tier, item pool, ground cap/overflow, `data.ground` mirror + re-drop on join, DragController, server-validated merge, index | Drag +1 onto +1 → +2; invalid drops snap back; the 41st item goes to storage; rejoining restores ground items |
-| **4. Equipment & storage** | Storage panel (to ground / equip), equipment panel, stats applied (damage, HP, defense, speed), server-side GearScore attribute | Equipping a +5 Sword visibly speeds up kills; Boots raise speed; GS updates |
+| **4. Equipment & storage** ✅ | InventoryService (equip/unequip/store/withdraw), menu bar, Equipment panel, Storage panel, drag-to-Storage and drag-to-hero. *Stats and the GearScore attribute were already done in M2* | Equipping a +5 Sword visibly speeds up kills; Boots raise speed; GS updates; Unequip → item appears in Storage; Take out → item lands next to you; drag onto Storage/hero works |
 | **5. Upgrades & boss** | Upgrade shop UI + RequestUpgrade, enemy scaling by Drop Tier, boss timer with guaranteed high drop | Buying Drop Tier raises drop plus and enemy toughness; the boss appears every 3 min and drops +T+3 |
 | **6. Castles & offline** | CastleService capture flow + battle visual, ownership flag, income ticks, attacking owned castles, castle popup, offline payout on join | Capture Oakhold at GS 150+, earn 4 g/s, a second player can attack it; leave and return → offline gold popup |
 | **7. Rebirth, index, balance** | Rebirth screen + reset (re-equip the starter set via `NewPlayer.equipStarterKit`), multipliers, index panel, economy simulation script, tuning pass, security review of all remotes | Reach +10 → rebirth → gold ×1.5; the index keeps its records; the sim matches the pacing targets |
@@ -161,7 +176,9 @@ All numbers live in `src/shared/Config/*.luau`; formulas live in `src/shared/For
 | Area | Limitation | Plan |
 |---|---|---|
 | Drag | If the server releases a source Part and re-acquires it for a new drop in the same frame, the client may not see it leave, so the merge looks rejected and snaps back (the data is correct) | Accept; revisit if seen in playtests (would need a merge-result remote) |
-| Drag | Mouse and touch only; no gamepad dragging | Gamepad: select-then-select flow with the M4 panels |
+| Drag | Mouse and touch only; no gamepad dragging, and no keyboard shortcuts for the panels | Gamepad: select-then-select flow; add keybinds (G/B) when the menu grows |
+| UI | When the server refuses a panel action (e.g. Take out when the ground is full) nothing tells the player why; the full-ground case is greyed out in advance | Add a small toast system |
+| UI | The Storage list is rebuilt fully on each change while open | Fine at current sizes; switch to row reuse if storage gets large |
 | Coins | Coins lying on the ground when the owner leaves are lost (D7) | Accept; worth very little |
 | Enemies | Placeholder grunts have no walk/attack animation | Art pass |
 | Items | Placeholder shapes; overlapping drops can stack on top of each other | Art pass; optional spread-out nudge |

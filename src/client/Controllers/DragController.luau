@@ -5,6 +5,8 @@
 -- a local "ghost" copy. On release it sends an intent:
 --   * over another own item that can merge -> RequestMerge(sourceId, targetId)
 --   * over empty ground in the player's zone -> RequestMove(itemId, point)
+--   * over the Storage menu button           -> RequestStore(itemId)
+--   * over the player's own hero             -> RequestEquipFromGround(itemId)
 --   * anything else (or an invalid merge)    -> snap back immediately, nothing sent
 -- After sending, it waits briefly for the server's result to replicate (source removed / part
 -- moved). If nothing arrives in time, the server rejected it, so the ghost snaps back.
@@ -18,6 +20,7 @@ local Types = require(Shared.Types)
 local Gear = require(Shared.Gear)
 local Net = require(Shared.Net)
 local Fx = require(script.Parent.Parent.Util.Fx)
+local MenuController = require(script.Parent.MenuController)
 
 local CONFIRM_TIMEOUT = 1 -- seconds to wait for the server before assuming rejection
 local LIFT = 1.5 -- studs the ghost floats above the ground while dragging
@@ -30,6 +33,7 @@ type Drag = {
 	hoverTarget: BasePart?,
 	groundPoint: Vector3?,
 	savedCameraType: Enum.CameraType?,
+	dropZone: ("Storage" | "Hero")?, -- set while hovering a non-world drop target
 }
 
 local localPlayer = Players.LocalPlayer :: Player
@@ -102,6 +106,15 @@ local function castAt(screenPosition: Vector3, ignore: { Instance }): RaycastRes
 	return workspace:Raycast(ray.Origin, ray.Direction * 500, params)
 end
 
+-- Whether the screen position is over the local character.
+local function isOverHero(screenPosition: Vector3, character: Model): boolean
+	local ray = workspace.CurrentCamera:ScreenPointToRay(screenPosition.X, screenPosition.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { character }
+	return workspace:Raycast(ray.Origin, ray.Direction * 500, params) ~= nil
+end
+
 local function finish(d: Drag)
 	if d.savedCameraType then
 		workspace.CurrentCamera.CameraType = d.savedCameraType
@@ -162,6 +175,24 @@ local function beginDrag(input: InputObject)
 end
 
 local function updateDrag(d: Drag, screenPosition: Vector3)
+	local overStorage = MenuController:IsOver("Storage", screenPosition)
+	MenuController:SetDropHover("Storage", overStorage)
+	if overStorage then
+		d.dropZone, d.hoverTarget, d.groundPoint = "Storage", nil, nil
+		highlight.Adornee = nil
+		return
+	end
+	local character = localPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if character and root and isOverHero(screenPosition, character) then
+		d.dropZone, d.hoverTarget, d.groundPoint = "Hero", nil, nil
+		d.ghost.CFrame = CFrame.new(root.Position + Vector3.new(0, 4, 0)) * d.origin.Rotation
+		highlight.Adornee = character
+		highlight.FillColor = Color3.fromRGB(90, 255, 120)
+		return
+	end
+	d.dropZone = nil
+
 	local hit = castAt(screenPosition, { d.part })
 	if not hit then
 		return
@@ -183,12 +214,30 @@ local function updateDrag(d: Drag, screenPosition: Vector3)
 	end
 end
 
+-- Success = the item is removed from workspace.Items (merged away, stored, or equipped).
+local function awaitRemoval(d: Drag)
+	awaitConfirmation(d, d.part.AncestryChanged, function()
+		return d.part.Parent ~= itemsFolder
+	end)
+end
+
 local function endDrag(d: Drag)
 	drag = nil
 	highlight.Adornee = nil
+	MenuController:SetDropHover("Storage", false)
 	local part = d.part
 	if part.Parent ~= itemsFolder then
 		finish(d) -- the item vanished mid-drag (e.g. zone cleared)
+		return
+	end
+
+	if d.dropZone == "Storage" then
+		Net.event("RequestStore"):FireServer(part:GetAttribute("ItemId"))
+		awaitRemoval(d)
+		return
+	elseif d.dropZone == "Hero" then
+		Net.event("RequestEquipFromGround"):FireServer(part:GetAttribute("ItemId"))
+		awaitRemoval(d)
 		return
 	end
 
@@ -199,10 +248,7 @@ local function endDrag(d: Drag)
 			return
 		end
 		Net.event("RequestMerge"):FireServer(part:GetAttribute("ItemId"), target:GetAttribute("ItemId"))
-		-- Success = the source item is removed from workspace.Items.
-		awaitConfirmation(d, part.AncestryChanged, function()
-			return part.Parent ~= itemsFolder
-		end)
+		awaitRemoval(d)
 	elseif d.groundPoint and isOnOwnPad(d.groundPoint) then
 		Net.event("RequestMove"):FireServer(part:GetAttribute("ItemId"), d.groundPoint)
 		-- Success = the real part moves (the server re-places it at the drop point).

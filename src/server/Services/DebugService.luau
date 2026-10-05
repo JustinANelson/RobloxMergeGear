@@ -3,7 +3,7 @@
 --   /gold [amount]        add gold (default 1000)
 --   /droptier <level>     set the Drop Tier upgrade level
 --   /equip <kind> <plus>  equip an item, e.g. /equip sword 5
---   /unequip              clear all equipped gear
+--   /unequip              move all equipped gear to storage
 --   /drop <kind> <plus> [count]  give items (ground first, then storage), e.g. /drop sword 1 8
 --   /resetdata            wipe your save back to defaults
 local Players = game:GetService("Players")
@@ -82,8 +82,13 @@ function DebugService:Start()
 	end)
 
 	command("unequip", function(player, data)
+		-- To storage, like the real Unequip button, so nothing is lost.
+		for _, item in data.equipped :: any do
+			Gear.addCount(data.inventory, item, 1)
+		end
 		table.clear(data.equipped)
 		DataService:MarkDirty(player, "equipped")
+		DataService:MarkDirty(player, "inventory")
 	end)
 
 	command("drop", function(player, _data, args)

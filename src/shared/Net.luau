@@ -11,8 +11,23 @@ export type EventName =
 	| "DataChanged" -- S->C: { [topLevelKey]: newValue }, batched once per frame
 	| "RequestMerge" -- C->S: (sourceItemId, targetItemId) drop one ground item onto another
 	| "RequestMove" -- C->S: (itemId, groundPoint: Vector3) drop a ground item on empty ground
+	| "RequestStore" -- C->S: (itemId) ground item -> storage
+	| "RequestWithdraw" -- C->S: (kind, quality, plus) storage -> ground near the hero
+	| "RequestEquipFromStorage" -- C->S: (kind, quality, plus) old item in that slot -> storage
+	| "RequestEquipFromGround" -- C->S: (itemId) old item in that slot -> storage
+	| "RequestUnequip" -- C->S: (slot) equipped item -> storage
 
-local EVENTS: { EventName } = { "DataSnapshot", "DataChanged", "RequestMerge", "RequestMove" }
+local EVENTS: { EventName } = {
+	"DataSnapshot",
+	"DataChanged",
+	"RequestMerge",
+	"RequestMove",
+	"RequestStore",
+	"RequestWithdraw",
+	"RequestEquipFromStorage",
+	"RequestEquipFromGround",
+	"RequestUnequip",
+}
 
 local FOLDER_NAME = "Remotes"
 local cache: { [string]: RemoteEvent } = {}

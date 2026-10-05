@@ -12,8 +12,10 @@ One line per system. Read this instead of crawling `src/`. Reasoning, schema and
 | Combat | `Services/CombatService` | `Controllers/CombatFxController` | `Config/Gear` (Hero) | Hero stats → Humanoid (HP, speed), `GearScore` player attribute, auto-attack on Heartbeat, applies enemy hits. No remotes: FX derive from replicated Humanoid health |
 | Economy | `Services/EconomyService` | | `Config/Drops` (Gold) | Only gold writer: `AddGold(player, amount, source)`, `SpendGold`. Owner-only coins + magnet loop; auto-credit after 30 s |
 | Loot | `Services/LootService`, `Loot/ItemPool`, `Util/RateLimit` | `Controllers/DragController`, `Controllers/LootFxController` | `Gear`, `Config/Drops`, `Config/ItemVisuals` | Drops (kind by weight, plus from Drop Tier), ground cap 40 → overflow to storage, merge/move validation, rejoin restore. Invariant: physical items ≡ `data.ground`. `GiveItem(player, item, point?)`, `ClearPlayer`, `Populate` |
+| Inventory | `Services/InventoryService`, `Util/Validate` | `Controllers/MenuController`, `Controllers/EquipmentController`, `Controllers/StorageController` | `Gear` (`stacks`, `isValidItem`, `displayName`) | Moves items storage ↔ ground ↔ equipped; displaced items → storage. Menu bar + Gear/Storage panels; drag onto Storage button = store, onto hero = equip |
 | HUD | | `Controllers/HudController` | `Formulas`, `Util/Format` | Gold, Gear Score (client-side from `equipped`), Drop Tier |
-| Debug | `Services/DebugService` | | | Studio-only: `/gold [n]`, `/droptier <n>`, `/equip <kind> <plus>`, `/unequip`, `/drop <kind> <plus> [count]`, `/resetdata` |
+| Debug | `Services/DebugService` | | | Studio-only: `/gold [n]`, `/droptier <n>`, `/equip <kind> <plus>`, `/unequip` (→ storage), `/drop <kind> <plus> [count]`, `/resetdata` |
+| Client UI kit | | `Util/Ui` | | `new`, `window`, `button`, `text`, `list`, `stat`, `Theme`. New panels: build with these, register via `MenuController:AddPanel(name, order, window, onOpen?)` |
 | Client FX | | `Util/Fx` | | Shared client-only helpers (`part`, `pop`, `floatingText`, `tweenThenDestroy`) in `workspace.ClientFx` |
 | Balance | | | `Config/*`, `Formulas`, `Gear` | Config = numbers only; Formulas = all curves; Gear = merge rule + count helpers |
 
@@ -27,6 +29,11 @@ One line per system. Read this instead of crawling `src/`. Reasoning, schema and
 | DataChanged | S→C | `{ [topKey]: value }` per frame | DataService |
 | RequestMerge | C→S | `(sourceItemId, targetItemId)` | LootService: rate → ids → ownership → canMerge → reach |
 | RequestMove | C→S | `(itemId, groundPoint: Vector3)` | LootService: rate → id → Vector3/NaN → ownership → on own pad → reach |
+| RequestStore | C→S | `(itemId)` | InventoryService: rate → id → owned ground item → reach → ground→storage |
+| RequestWithdraw | C→S | `(kind, quality, plus)` | InventoryService: rate → isValidItem → has count → ground not full → storage→ground near hero |
+| RequestEquipFromStorage | C→S | `(kind, quality, plus)` | InventoryService: rate → isValidItem → has count → equip (old → storage) |
+| RequestEquipFromGround | C→S | `(itemId)` | InventoryService: rate → id → owned ground item → reach → equip (old → storage) |
+| RequestUnequip | C→S | `(slot)` | InventoryService: rate → valid slot → equipped item → storage |
 
 ## Data (player save, v1)
 `gold, inventory[kind][quality][plus]=n, ground (same shape), equipped[slot]=Item, upgrades{DropTier,EnemyCap,SpawnRate,MagnetRange}, rebirths, index[slot], stats{…}, offline{lastOnline,incomeRate}`

@@ -14,6 +14,20 @@ function Gear.isValidKind(kind: unknown): boolean
 	return type(kind) == "string" and GearConfig.Kinds[kind :: any] ~= nil
 end
 
+-- For untrusted input (remote args): a real kind, a known quality, an integer plus in range.
+function Gear.isValidItem(kind: unknown, quality: unknown, plus: unknown): boolean
+	return Gear.isValidKind(kind)
+		and table.find(GearConfig.Qualities, quality :: any) ~= nil
+		and type(plus) == "number"
+		and plus % 1 == 0
+		and plus >= 1
+		and plus <= GearConfig.MaxPlus
+end
+
+function Gear.displayName(item: Types.Item): string
+	return `{GearConfig.Kinds[item.kind].displayName} +{item.plus}`
+end
+
 -- Two items merge when kind, quality and plus all match and the result stays within MaxPlus.
 function Gear.canMerge(a: Types.Item, b: Types.Item): boolean
 	return a.kind == b.kind and a.quality == b.quality and a.plus == b.plus and a.plus < GearConfig.MaxPlus
@@ -63,6 +77,49 @@ function Gear.addCount(inventory: Types.Inventory, item: Types.Item, delta: numb
 	end
 	(counts :: any)[key] = if new == 0 then nil else new
 	return true
+end
+
+export type Stack = { item: Types.Item, count: number }
+
+local SLOT_ORDER: { [string]: number } = {}
+for i, slot in GearConfig.Slots do
+	SLOT_ORDER[slot] = i
+end
+
+-- Flattens a count map into stacks, sorted by slot order, then plus (highest first).
+function Gear.stacks(inventory: Types.Inventory): { Stack }
+	local result: { Stack } = {}
+	for kind, byQuality in inventory :: any do
+		for quality, counts in byQuality do
+			for key, count in counts do
+				if count > 0 then
+					table.insert(result, {
+						item = { kind = kind, quality = quality, plus = tonumber(key) :: number },
+						count = count,
+					})
+				end
+			end
+		end
+	end
+	table.sort(result, function(a, b)
+		local slotA = SLOT_ORDER[Gear.slotOf(a.item.kind)]
+		local slotB = SLOT_ORDER[Gear.slotOf(b.item.kind)]
+		if slotA ~= slotB then
+			return slotA < slotB
+		elseif a.item.kind ~= b.item.kind then
+			return a.item.kind < b.item.kind
+		end
+		return a.item.plus > b.item.plus
+	end)
+	return result
+end
+
+function Gear.totalCount(inventory: Types.Inventory): number
+	local total = 0
+	for _, stack in Gear.stacks(inventory) do
+		total += stack.count
+	end
+	return total
 end
 
 return Gear

@@ -16,6 +16,7 @@ local Formulas = require(Shared.Formulas)
 local DropConfig = require(Shared.Config.Drops)
 local MapConfig = require(Shared.Config.Map)
 local RateLimit = require(script.Parent.Parent.Util.RateLimit)
+local Validate = require(script.Parent.Parent.Util.Validate)
 local ItemPool = require(script.Parent.Parent.Loot.ItemPool)
 local DataService = require(script.Parent.DataService)
 local ZoneService = require(script.Parent.ZoneService)
@@ -132,33 +133,60 @@ local function changeCount(inventory: Types.Inventory, item: Item, delta: number
 	end
 end
 
-local function withinReach(player: Player, point: Vector3): boolean
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	return root ~= nil and (root.Position - point).Magnitude <= DropConfig.MaxInteractDistance
-end
-
-local function isItemId(value: unknown): boolean
-	return type(value) == "number" and value == value and value % 1 == 0 and value > 0
-end
-
 -- Public API ----------------------------------------------------------------------------
 
--- Gives a player an item: onto their zone's ground if there's room (at groundPoint, or a random
--- spot), otherwise straight into storage. Returns where it went, or nil if data isn't loaded.
+function LootService:GroundCount(player: Player): number
+	return groundCount(player)
+end
+
+-- Puts an item on the player's ground (at groundPoint clamped onto the pad, or a random spot)
+-- and counts it in data.ground. Returns false, changing nothing, if the ground is full or the
+-- player's zone/save isn't ready. Doesn't touch the index or storage.
+function LootService:PlaceOnGround(player: Player, item: Item, groundPoint: Vector3?): boolean
+	local data = DataService:GetData(player)
+	local zone = ZoneService:GetZone(player)
+	if not (data and zone and populated[player]) or groundCount(player) >= DropConfig.GroundCap then
+		return false
+	end
+	local point = if groundPoint then clampToPad(zone, groundPoint) else randomPadPoint(zone)
+	changeCount(data.ground, item, 1)
+	DataService:MarkDirty(player, "ground")
+	spawnPhysical(player, item, point)
+	return true
+end
+
+-- The player's own ground item with this id, plus its Part (for reach checks).
+function LootService:GetGroundItem(player: Player, id: number): (Item?, BasePart?)
+	local entry = entries[id]
+	if entry and entry.owner == player then
+		return entry.item, entry.part
+	end
+	return nil, nil
+end
+
+-- Removes the player's ground item and un-counts it from data.ground. The caller must put the
+-- returned item somewhere (storage, equipped) in the same step to keep the save consistent.
+function LootService:TakeGroundItem(player: Player, id: number): Item?
+	local entry = entries[id]
+	local data = DataService:GetData(player)
+	if not (entry and data and entry.owner == player) then
+		return nil
+	end
+	changeCount(data.ground, entry.item, -1)
+	DataService:MarkDirty(player, "ground")
+	removePhysical(entry)
+	return entry.item
+end
+
+-- Gives a player a NEW item (drops, rewards): records it in the index, then onto the ground if
+-- there's room, otherwise straight into storage. Returns where it went, or nil if data isn't loaded.
 function LootService:GiveItem(player: Player, item: Item, groundPoint: Vector3?): ("ground" | "storage")?
 	local data = DataService:GetData(player)
 	if not data then
 		return nil
 	end
 	recordIndex(player, data, item)
-
-	local zone = ZoneService:GetZone(player)
-	if zone and populated[player] and groundCount(player) < DropConfig.GroundCap then
-		local point = if groundPoint then clampToPad(zone, groundPoint) else randomPadPoint(zone)
-		changeCount(data.ground, item, 1)
-		DataService:MarkDirty(player, "ground")
-		spawnPhysical(player, item, point)
+	if LootService:PlaceOnGround(player, item, groundPoint) then
 		return "ground"
 	end
 	changeCount(data.inventory, item, 1)
@@ -189,13 +217,9 @@ function LootService:Populate(player: Player)
 	populated[player] = true
 
 	local saved: { Item } = {}
-	for kind, byQuality in data.ground :: any do
-		for quality, counts in byQuality do
-			for key, count in counts do
-				for _ = 1, count do
-					table.insert(saved, { kind = kind, quality = quality, plus = tonumber(key) :: number })
-				end
-			end
+	for _, stack in Gear.stacks(data.ground) do
+		for _ = 1, stack.count do
+			table.insert(saved, table.clone(stack.item))
 		end
 	end
 
@@ -221,7 +245,7 @@ local function onRequestMerge(player: Player, sourceId: unknown, targetId: unkno
 	if not RateLimit.check(player, "LootRequest", DropConfig.RequestCooldown) then
 		return
 	end
-	if not (isItemId(sourceId) and isItemId(targetId)) or sourceId == targetId then
+	if not (Validate.isId(sourceId) and Validate.isId(targetId)) or sourceId == targetId then
 		return
 	end
 	local source = entries[sourceId :: number]
@@ -229,7 +253,7 @@ local function onRequestMerge(player: Player, sourceId: unknown, targetId: unkno
 	if not (source and target and source.owner == player and target.owner == player) then
 		return
 	end
-	if not Gear.canMerge(source.item, target.item) or not withinReach(player, target.part.Position) then
+	if not Gear.canMerge(source.item, target.item) or not Validate.withinReach(player, target.part.Position) then
 		return
 	end
 	local data = DataService:GetData(player)
@@ -256,19 +280,16 @@ local function onRequestMove(player: Player, itemId: unknown, point: unknown)
 	if not RateLimit.check(player, "LootRequest", DropConfig.RequestCooldown) then
 		return
 	end
-	if not isItemId(itemId) or typeof(point) ~= "Vector3" then
+	if not Validate.isId(itemId) or not Validate.isFiniteVector3(point) then
 		return
 	end
 	local target = point :: Vector3
-	if target.X ~= target.X or target.Y ~= target.Y or target.Z ~= target.Z then
-		return -- NaN
-	end
 	local entry = entries[itemId :: number]
 	local zone = ZoneService:GetZone(player)
 	if not (entry and zone and entry.owner == player) then
 		return
 	end
-	if not isOnPad(zone, target) or not withinReach(player, target) then
+	if not isOnPad(zone, target) or not Validate.withinReach(player, target) then
 		return -- client snaps the item back
 	end
 	ItemPool.place(entry.part, clampToPad(zone, target))
