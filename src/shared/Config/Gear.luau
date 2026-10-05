@@ -26,7 +26,8 @@ return TableUtil.deepFreeze({
 		defense = 0,
 		walkSpeed = 16,
 		attackInterval = 0.8, -- seconds between auto-attacks
-		attackRange = 8, -- studs
+		attackRange = 8, -- studs, root to root
+		respawnSeconds = 4,
 	},
 
 	-- What each slot's plus contributes. Weapon carries offense, Armor/Helmet carry survival,

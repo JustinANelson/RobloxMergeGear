@@ -32,6 +32,9 @@ local STAMP_INTERVAL = 30
 local DataService = {
 	-- (player, data) after the profile is loaded, migrated and sent to the client.
 	ProfileLoaded = Signal.new() :: Signal.Signal<Player, PlayerData>,
+	-- (player, topLevelKey) whenever a service marks a key dirty. Lets server systems react to
+	-- data changes (e.g. re-apply hero stats when "equipped" changes) without polling.
+	Changed = Signal.new() :: Signal.Signal<Player, string>,
 }
 
 local profiles: { [Player]: any } = {}
@@ -53,6 +56,7 @@ function DataService:MarkDirty(player: Player, key: string)
 		dirty[player] = keys
 	end
 	keys[key] = true
+	DataService.Changed:Fire(player, key)
 end
 
 -- Studio-only: wipe a player's save back to the template.
@@ -63,6 +67,9 @@ function DataService:ResetData(player: Player)
 		profile.Data = TableUtil.deepCopy(DataTemplate)
 		dirty[player] = nil
 		Net.event("DataSnapshot"):FireClient(player, profile.Data)
+		for key in profile.Data do
+			DataService.Changed:Fire(player, key)
+		end
 	end
 end
 

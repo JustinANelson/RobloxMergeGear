@@ -11,6 +11,14 @@ return TableUtil.deepFreeze({
 	Spawning = {
 		baseCap = 6, -- alive at once per zone; EnemyCap upgrade adds to this
 		baseInterval = 2.0, -- seconds between spawns; SpawnRate upgrade shortens this
+		edgeInset = 8, -- studs kept clear between spawn points and the zone pad's edge
+	},
+
+	Ai = {
+		tickSeconds = 0.2, -- how often enemies re-think (chase/attack); also the hero attack check rate
+		-- Enemies only chase while their owner is inside the zone pad (+ this margin), so they never
+		-- leave the zone. Otherwise they return to where they spawned.
+		leashMargin = 10,
 	},
 
 	Grunt = {
@@ -20,7 +28,6 @@ return TableUtil.deepFreeze({
 		walkSpeed = 12,
 		attackInterval = 1.2,
 		attackRange = 5,
-		aggroRange = 70, -- the whole zone, in practice
 	},
 
 	Boss = {

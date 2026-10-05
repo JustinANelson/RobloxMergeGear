@@ -20,5 +20,6 @@ return TableUtil.deepFreeze({
 	Gold = {
 		despawnSeconds = 30, -- uncollected coins are credited automatically, then removed
 		baseMagnetRange = 8, -- studs; the MagnetRange upgrade adds to this
+		magnetTickSeconds = 0.1,
 	},
 })

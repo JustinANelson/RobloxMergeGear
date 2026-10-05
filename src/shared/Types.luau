@@ -47,7 +47,7 @@ export type PlayerData = {
 }
 
 export type StatName = "maxHealth" | "damage" | "defense" | "walkSpeed"
-export type HeroStats = { [StatName]: number }
+export type HeroStats = { maxHealth: number, damage: number, defense: number, walkSpeed: number }
 
 -- Balancing curves used throughout Config.
 -- exp:    base * growth^(x - 1)
