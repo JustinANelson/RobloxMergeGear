@@ -1,0 +1,7 @@
+{
+  "languageMode": "strict",
+  "aliases": {
+    "Shared": "src/shared",
+    "Packages": "Packages"
+  }
+}

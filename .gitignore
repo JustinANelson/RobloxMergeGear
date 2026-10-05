@@ -1,0 +1,14 @@
+Packages/*
+ServerPackages/*
+DevPackages/
+!Packages/.gitkeep
+!ServerPackages/.gitkeep
+sourcemap.json
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+build/
+.claude/settings.local.json
+roblox.d.luau
+globalTypes.d.luau

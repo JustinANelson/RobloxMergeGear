@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(rojo build:*)",
+      "Bash(rojo sourcemap:*)",
+      "Bash(selene:*)",
+      "Bash(stylua:*)",
+      "Bash(luau-lsp analyze:*)",
+      "Bash(wally install)",
+      "Bash(rokit install)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "mcp__roblox-studio"
+    ],
+    "deny": [
+      "Read(./**/*.rbxl)",
+      "Read(./**/*.rbxlx)",
+      "Read(./**/*.rbxm)",
+      "Read(./**/*.rbxmx)",
+      "Read(./sourcemap.json)",
+      "Read(./build/**)",
+      "Read(./DevPackages/**)"
+    ]
+  },
+  "enabledMcpjsonServers": ["roblox-studio"],
+  "env": {
+    "MAX_MCP_OUTPUT_TOKENS": "8000"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/format-luau.sh", "timeout": 20 }
+        ]
+      }
+    ]
+  }
+}
