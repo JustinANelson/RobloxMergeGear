@@ -14,6 +14,7 @@ local TableUtil = require(Shared.Util.TableUtil)
 local DataTemplate = require(Shared.Config.DataTemplate)
 local ProfileStore = require(script.Parent.Parent.Vendor.ProfileStore)
 local Migrations = require(script.Parent.Parent.Data.Migrations)
+local NewPlayer = require(script.Parent.Parent.Data.NewPlayer)
 
 -- Changing the store name starts everyone fresh. Keep it stable once players exist.
 local STORE_NAME = "PlayerData"
@@ -65,6 +66,7 @@ function DataService:ResetData(player: Player)
 	local profile = profiles[player]
 	if profile then
 		profile.Data = TableUtil.deepCopy(DataTemplate)
+		NewPlayer.apply(profile.Data)
 		dirty[player] = nil
 		Net.event("DataSnapshot"):FireClient(player, profile.Data)
 		for key in profile.Data do
@@ -110,6 +112,7 @@ local function onPlayerAdded(player: Player)
 		return
 	end
 	profile:Reconcile()
+	NewPlayer.apply(profile.Data)
 
 	profile.OnSessionEnd:Connect(function()
 		profiles[player] = nil

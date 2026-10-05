@@ -4,6 +4,7 @@
 --   /droptier <level>     set the Drop Tier upgrade level
 --   /equip <kind> <plus>  equip an item, e.g. /equip sword 5
 --   /unequip              clear all equipped gear
+--   /drop <kind> <plus> [count]  give items (ground first, then storage), e.g. /drop sword 1 8
 --   /resetdata            wipe your save back to defaults
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,6 +17,7 @@ local Gear = require(Shared.Gear)
 local GearConfig = require(Shared.Config.Gear)
 local UpgradeConfig = require(Shared.Config.Upgrades)
 local DataService = require(script.Parent.DataService)
+local LootService = require(script.Parent.LootService)
 
 type Handler = (player: Player, data: Types.PlayerData, args: { string }) -> ()
 
@@ -84,8 +86,28 @@ function DebugService:Start()
 		DataService:MarkDirty(player, "equipped")
 	end)
 
+	command("drop", function(player, _data, args)
+		local kind = capitalize(args[1] or "")
+		local plus = tonumber(args[2])
+		if not Gear.isValidKind(kind) or not plus then
+			warn("[Debug] usage: /drop <helmet|armor|boots|sword> <plus> [count]")
+			return
+		end
+		local item: Types.Item = {
+			kind = kind :: Types.ItemKind,
+			quality = "Normal",
+			plus = math.clamp(math.floor(plus), 1, GearConfig.MaxPlus),
+		}
+		for _ = 1, math.clamp(math.floor(tonumber(args[3]) or 1), 1, 100) do
+			LootService:GiveItem(player, table.clone(item))
+		end
+	end)
+
 	command("resetdata", function(player)
+		-- Physical items first, so the world matches the fresh (empty) data.ground.
+		LootService:ClearPlayer(player)
 		DataService:ResetData(player)
+		LootService:Populate(player)
 	end)
 
 	folder.Parent = TextChatService

@@ -19,6 +19,9 @@ return TableUtil.deepFreeze({
 		Sword = { slot = "Weapon", displayName = "Sword", statMultiplier = 1 },
 	} :: { [Types.ItemKind]: { slot: Types.Slot, displayName: string, statMultiplier: number } },
 
+	-- Equipped once on a brand-new save (and again after rebirth): kind -> plus.
+	StarterKit = { Helmet = 1, Armor = 1, Boots = 1, Sword = 1 } :: { [Types.ItemKind]: number },
+
 	-- The hero with nothing equipped.
 	Hero = {
 		maxHealth = 100,

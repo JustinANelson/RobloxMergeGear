@@ -2,6 +2,7 @@
 -- Item identity, merge rules, and count-based storage helpers. Pure: operates on plain tables.
 local Types = require(script.Parent.Types)
 local GearConfig = require(script.Parent.Config.Gear)
+local ItemVisuals = require(script.Parent.Config.ItemVisuals)
 
 local Gear = {}
 
@@ -20,6 +21,15 @@ end
 
 function Gear.mergeResult(a: Types.Item): Types.Item
 	return { kind = a.kind, quality = a.quality, plus = a.plus + 1 }
+end
+
+function Gear.colorForPlus(plus: number): Color3
+	for _, band in ItemVisuals.PlusBands do
+		if plus <= band.maxPlus then
+			return band.color
+		end
+	end
+	return ItemVisuals.PlusBands[#ItemVisuals.PlusBands].color
 end
 
 -- Storage counts ---------------------------------------------------------------

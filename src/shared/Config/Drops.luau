@@ -17,6 +17,15 @@ return TableUtil.deepFreeze({
 	-- Generous because the camera can pan; the item must also be inside their zone.
 	MaxInteractDistance = 80,
 
+	-- Items land within this many studs of where the enemy died (kept on the zone pad).
+	DropScatter = 3,
+	-- Keep items this far inside the pad's edge.
+	PadInset = 2,
+	-- Minimum seconds between merge/move requests per player (server rate limit).
+	RequestCooldown = 0.05,
+	-- Idle pooled Parts kept per kind; extras are destroyed.
+	PoolMaxIdlePerKind = 60,
+
 	Gold = {
 		despawnSeconds = 30, -- uncollected coins are credited automatically, then removed
 		baseMagnetRange = 8, -- studs; the MagnetRange upgrade adds to this

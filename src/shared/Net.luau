@@ -9,8 +9,10 @@ local RunService = game:GetService("RunService")
 export type EventName =
 	"DataSnapshot" -- S->C: full PlayerData once, after the profile loads
 	| "DataChanged" -- S->C: { [topLevelKey]: newValue }, batched once per frame
+	| "RequestMerge" -- C->S: (sourceItemId, targetItemId) drop one ground item onto another
+	| "RequestMove" -- C->S: (itemId, groundPoint: Vector3) drop a ground item on empty ground
 
-local EVENTS: { EventName } = { "DataSnapshot", "DataChanged" }
+local EVENTS: { EventName } = { "DataSnapshot", "DataChanged", "RequestMerge", "RequestMove" }
 
 local FOLDER_NAME = "Remotes"
 local cache: { [string]: RemoteEvent } = {}

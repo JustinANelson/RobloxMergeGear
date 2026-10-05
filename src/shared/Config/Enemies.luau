@@ -23,10 +23,10 @@ return TableUtil.deepFreeze({
 
 	Grunt = {
 		health = { kind = "exp", base = 30, growth = 1.45 } :: Curve,
-		damage = { kind = "exp", base = 5, growth = 1.4 } :: Curve,
+		damage = { kind = "exp", base = 2, growth = 1.4 } :: Curve,
 		gold = { kind = "exp", base = 3, growth = 1.5 } :: Curve,
 		walkSpeed = 12,
-		attackInterval = 1.2,
+		attackInterval = 1.5,
 		attackRange = 5,
 	},
 

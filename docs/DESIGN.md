@@ -17,42 +17,50 @@ Status: MVP planning done, Milestone 1 implemented. `docs/ARCHITECTURE.md` is th
 | D9 | Drop Tier stored as an upgrade *level* (0-based); drop plus = level + 1 | Every upgrade has the same shape |
 | D10 | Loot Magnet pulls **gold** only. Gear stays on the ground for merging | Gear on the ground is the core interaction |
 | D11 | Rebirth requirement = any item reaching **+10 + 2 × rebirths** | Matches "first +10", scales after that |
+| D14 | Drag uses a **local ghost + server confirmation**: the real item only moves when the server says so, and the client snaps back on timeout | No client authority over items, and rejected requests still look smooth |
+| D15 | Ground item **positions aren't saved**; rejoining scatters them randomly on the pad | Keeps the save small (counts only); exact layout has little value |
+| D16 | Merging A onto B keeps **B's spot**; A disappears | Matches the mental model of "drop this on that" |
+| D13 | New saves get a **+1 starter set** (all 4 slots), granted once via the `starterKitGranted` flag (`server/Data/NewPlayer`); rebirth re-equips it | An empty-handed hero (5 DPS, 100 HP) couldn't survive Grunt +1. It can't go in the template: Reconcile recurses and would refill emptied slots on every join |
 | D12 | ProfileStore is vendored at `src/server/Vendor` (official source, license in `ThirdParty/`) | Works without Wally; swap to `lm-loleris/profilestore` via Wally whenever you like |
 
 ## 1. Architecture
 
 ```
 ReplicatedStorage.Shared         (src/shared)  — pure code + data, used by both sides
-  Config/   Gear, Drops, Enemies, Upgrades, Castles, Rebirth, Economy, Map, DataTemplate   (data only)
+  Config/   Gear, Drops, Enemies, Upgrades, Castles, Rebirth, Economy, Map, ItemVisuals, DataTemplate  (data only)
   Types     shared type definitions (PlayerData, Item, Loadout, …)
-  Formulas  every balancing formula (stats, gear score, costs, enemy scaling, capture odds, offline pay)
-  Gear      item identity, merge rule, count helpers
+  Formulas  every balancing formula (stats, gear score, costs, enemy scaling, drop rolls, capture odds, offline pay)
+  Gear      item identity, merge rule, count helpers, plus → color
   Net       registry of every remote (server creates, client looks up)
   Util/     Signal, TableUtil, Format
 ReplicatedStorage.Remotes        (created at runtime by Net.setup)
 ServerScriptService.Server       (src/server)
   init.server   creates remotes, loads Services, runs Init on all, then Start on all
-  Data/Migrations
-  Vendor/ProfileStore
+  Data/         Migrations (schema steps), NewPlayer (one-time grants)
+  Loot/         ItemPool (creates/dresses/recycles ground item Parts)
+  Util/         RateLimit (per-player remote cooldowns)
+  Vendor/       ProfileStore
   Services/
-    DataService       ProfileStore sessions, migrations, replicating saves to clients     [M1]
-    MapService        builds the world from config; exposes zone + castle anchors          [M1]
-    ZoneService       assigns personal zones, spawns players in them                       [M1]
-    DebugService      Studio-only chat commands                                            [M1]
-    EnemyService      per-zone spawner, enemy AI, boss timer                               [M2/M5]
-    CombatService     hero auto-attack, damage, death; applies hero stats                  [M2/M4]
-    EconomyService    gold (single entry point for adding/spending), coins, magnet, upgrades, offline [M2/M5/M6]
-    LootService       physical ground items: pooling, cap, overflow, drag/merge validation  [M3]
-    InventoryService  storage ↔ ground ↔ equipped transfers, index                         [M3/M4]
+    DataService       ProfileStore sessions, migrations, replication, Changed signal        [M1] ✅
+    MapService        builds the world from config; exposes zone + castle anchors          [M1] ✅
+    ZoneService       assigns personal zones, spawns players in them                       [M1] ✅
+    DebugService      Studio-only chat commands                                            [M1] ✅
+    EnemyService      per-zone spawner, enemy AI (boss timer in M5)                        [M2] ✅
+    CombatService     hero stats → Humanoid, auto-attack, damage, GearScore attribute      [M2] ✅
+    EconomyService    only gold writer, coins, magnet (upgrades M5, offline M6)            [M2] ✅
+    LootService       drops, ground cap/overflow, merge/move validation, rejoin restore    [M3] ✅
+    InventoryService  storage ↔ ground ↔ equipped transfers                                [M4]
     CastleService     capture battles, ownership, income ticks                             [M6]
     RebirthService    eligibility + reset                                                  [M7]
 StarterPlayerScripts.Client      (src/client)
+  Util/Fx           client-only FX helpers (pop, floating text, tween-then-destroy)
   Controllers/
-    DataController    read-only mirror of the player's save + change signals              [M1]
-    HudController     gold / gear score / drop tier                                        [M1]
-    DragController    picking, dragging, dropping items → RequestMerge / RequestMove       [M3]
-    PanelsController  equipment, storage, upgrades, castle popup, rebirth, index panels   [M4+]
-    CombatFxController  hit flashes, damage numbers, battle visuals                        [M2/M6]
+    DataController      read-only mirror of the player's save + change signals            [M1] ✅
+    HudController       gold / gear score / drop tier                                      [M1] ✅
+    CombatFxController  damage numbers, hit slashes, death puffs, coin pickup              [M2] ✅
+    DragController      drag ground items → RequestMerge / RequestMove                     [M3] ✅
+    LootFxController    drop and merge pops                                                [M3] ✅
+    PanelsController    equipment, storage, upgrades, castle popup, rebirth, index panels  [M4+]
 ```
 
 **Lifecycle.** `Init()` sets up the module's own state, signals and remotes; it must not yield or call other services. `Start()` runs after every Init, so it may call other services, connect players and yield.
@@ -63,7 +71,13 @@ StarterPlayerScripts.Client      (src/client)
 - Server → client: player-private state goes through `DataSnapshot`/`DataChanged`, with dirty top-level keys batched once per frame. World state goes through Instances and attributes (enemy health, item `OwnerUserId`/`Kind`/`Plus`, castle owner). Cosmetic events use specific remotes (for example `BattleStarted`).
 - Gold has a single writer, `EconomyService:AddGold(player, amount, source)`, which applies the rebirth multiplier and updates `stats.goldEarned`. Nothing else touches `data.gold`, apart from DebugService.
 
-**Ground items (M3).** The server keeps `items[id] = { owner, kind, quality, plus, part }`. Parts come from a pool (reparented to nil when idle). Clients drag a *local ghost*; on release they send `RequestMerge(a, b)` or `RequestMove(a, position)`. The server validates and then either merges (destroys one, upgrades the other, `data.ground` −2/+1) or rejects, in which case the client snaps the ghost back. Every change updates `data.ground` in the same step, so the save always matches the world.
+**Ground items (M3).**
+- *Registry.* `LootService` keeps `entries[id] = { id, owner, item, part }` (ids are per-server integers). Parts come from `Loot/ItemPool`, pooled per kind and reparented to nil when idle. Each Part carries the attributes `ItemId`, `OwnerUserId`, `Kind`, `Quality` and `Plus`, which clients read. Items are anchored, can't be collided with, and can be raycast.
+- *Invariant.* Every physical item is counted exactly once in `data.ground`, and each data change happens in the same step as the world change (`GiveItem`, merge, `Populate` overflow). Item positions aren't saved: on rejoin, `Populate` respawns items at random spots on the pad.
+- *Drops.* On `EnemyKilled`, the kind is rolled from `Drops.KindWeights` (`Formulas.rollDropKind`), and the plus is the Drop Tier plus, + `BossPlusBonus` for bosses, + 1 with the rebirth bonus chance (`Formulas.rollDropPlus`). Each drop lands within `DropScatter` studs of the kill, clamped onto the pad. If the player already has `GroundCap` (40) physical items, the drop goes straight to `data.inventory` (storage). Every drop updates `index`.
+- *Merge.* The client sends `RequestMerge(sourceId, targetId)`. The server checks rate limit → integer ids → both items exist and are owned by the sender → `Gear.canMerge` → the target is within `MaxInteractDistance` of the hero. Then: `ground` −1 source, −1 target, +1 result; the source Part is released; the target Part is re-dressed in place as the result; `stats.merges` +1; `index` updated.
+- *Move.* The client sends `RequestMove(itemId, point)`. The server checks rate limit → id → Vector3 without NaN → owned item → point lies on the sender's pad → within reach, then re-places the Part. No data change.
+- *Client (`DragController`).* It never moves the real Part. It hides the real Part locally (`LocalTransparencyModifier`) and drags a ghost copy. A Highlight shows green or red over a merge target. On release it predicts the outcome: an invalid merge or off-pad drop snaps back immediately without sending anything. Otherwise it sends the request and waits up to 1 s for the result to replicate (source Part removed, or Part moved), then snaps back if nothing arrives. Touch drags freeze the camera (`Scriptable`) so dragging doesn't also orbit it.
 
 ## 2. Save schema (v1)
 
@@ -76,6 +90,7 @@ StarterPlayerScripts.Client      (src/client)
   equipped  = { Weapon = { kind = "Sword", quality = "Normal", plus = 5 }, ... },  -- missing = empty
   upgrades  = { DropTier = 0, EnemyCap = 0, SpawnRate = 0, MagnetRange = 0 },     -- levels
   rebirths  = 0,
+  starterKitGranted = false,                      -- one-time grant flag (D13)
   index     = { Helmet = 0, Armor = 0, Weapon = 0, Boots = 0 },  -- highest plus per slot, survives rebirth
   stats     = { kills, bossKills, merges, castleCaptures, goldEarned },
   offline   = { lastOnline = <unix>, incomeRate = <gold/s> },
@@ -113,7 +128,7 @@ All numbers live in `src/shared/Config/*.luau`; formulas live in `src/shared/For
 | Defense | taken = raw × 50 / (50 + def) |
 | Gear Score | Σ weight × 10 × 1.5^(p−1); weights W 1.5, A 1.2, H 1.0, B 0.8. All +4 ≈ 150, all +7 ≈ 510, all +10 ≈ 1730 |
 | Drop weights | 25 each kind; ground cap 40; boss drop = Drop Tier + 3 |
-| Enemies (T = drop plus) | HP 30 × 1.45^(T−1), dmg 5 × 1.4^(T−1), gold 3 × 1.5^(T−1); cap 6, one spawn per 2.0 s |
+| Enemies (T = drop plus) | HP 30 × 1.45^(T−1), dmg 2 × 1.4^(T−1) every 1.5 s, gold 3 × 1.5^(T−1); cap 6, one spawn per 2.0 s. With the +1 starter set you kill a Grunt +1 in about 2 s, while a full pack of 6 needs about 22 s to kill you |
 | Boss | ×12 HP, ×3 dmg, ×15 gold, every 180 s |
 | Upgrades | Drop Tier 150 × 2.6^L (max 29) · Enemy Cap 40 × 1.6^L (+1, max 14) · Spawn Rate 60 × 1.65^L (×0.93 interval, max 15) · Magnet 25 × 1.5^L (+2 studs, max 15) |
 | Castles | T1 GS 150 → 4 g/s (×2) · T2 500 → 15 g/s (×2) · T3 1500 → 50 g/s · T4 4000 → 150 g/s |
@@ -135,8 +150,19 @@ All numbers live in `src/shared/Config/*.luau`; formulas live in `src/shared/For
 |---|---|---|
 | **1. Foundation** ✅ | Rojo layout, Net, ProfileStore data + migrations + replication, generated map, zone assignment, HUD, debug commands | You spawn in your own named zone, the HUD shows gold/GS/Drop Tier, `/gold` and `/equip` update it, and gold persists across sessions. A 2-player test server gives each player a different zone |
 | **2. Enemies & combat** ✅ | EnemyService spawner (cap, interval), chase-and-hit AI, hero auto-attack, HP/death/respawn, gold coins + magnet, EconomyService.AddGold. *Pulled forward from M4: gear stats are applied to the Humanoid and `GearScore` is a player attribute* | Enemies stream in, you kill them automatically, gold rises; you can die and respawn |
-| **3. Ground loot & merging** | Drops by weight at Drop Tier, item pool, ground cap/overflow, `data.ground` mirror + re-drop on join, DragController, server-validated merge, index | Drag +1 onto +1 → +2; invalid drops snap back; the 41st item goes to storage; rejoining restores ground items |
+| **3. Ground loot & merging** ✅ | Drops by weight at Drop Tier, item pool, ground cap/overflow, `data.ground` mirror + re-drop on join, DragController, server-validated merge, index | Drag +1 onto +1 → +2; invalid drops snap back; the 41st item goes to storage; rejoining restores ground items |
 | **4. Equipment & storage** | Storage panel (to ground / equip), equipment panel, stats applied (damage, HP, defense, speed), server-side GearScore attribute | Equipping a +5 Sword visibly speeds up kills; Boots raise speed; GS updates |
 | **5. Upgrades & boss** | Upgrade shop UI + RequestUpgrade, enemy scaling by Drop Tier, boss timer with guaranteed high drop | Buying Drop Tier raises drop plus and enemy toughness; the boss appears every 3 min and drops +T+3 |
 | **6. Castles & offline** | CastleService capture flow + battle visual, ownership flag, income ticks, attacking owned castles, castle popup, offline payout on join | Capture Oakhold at GS 150+, earn 4 g/s, a second player can attack it; leave and return → offline gold popup |
-| **7. Rebirth, index, balance** | Rebirth screen + reset, multipliers, index panel, economy simulation script, tuning pass, security review of all remotes | Reach +10 → rebirth → gold ×1.5; the index keeps its records; the sim matches the pacing targets |
+| **7. Rebirth, index, balance** | Rebirth screen + reset (re-equip the starter set via `NewPlayer.equipStarterKit`), multipliers, index panel, economy simulation script, tuning pass, security review of all remotes | Reach +10 → rebirth → gold ×1.5; the index keeps its records; the sim matches the pacing targets |
+
+## 5. Known limitations / follow-ups
+
+| Area | Limitation | Plan |
+|---|---|---|
+| Drag | If the server releases a source Part and re-acquires it for a new drop in the same frame, the client may not see it leave, so the merge looks rejected and snaps back (the data is correct) | Accept; revisit if seen in playtests (would need a merge-result remote) |
+| Drag | Mouse and touch only; no gamepad dragging | Gamepad: select-then-select flow with the M4 panels |
+| Coins | Coins lying on the ground when the owner leaves are lost (D7) | Accept; worth very little |
+| Enemies | Placeholder grunts have no walk/attack animation | Art pass |
+| Items | Placeholder shapes; overlapping drops can stack on top of each other | Art pass; optional spread-out nudge |
+| Typing | The Luau type solver widens union-keyed map keys, so code iterating `Loadout`/`index`/`inventory` uses string-keyed `:: any` views (see the comment in `Formulas`) | Revisit when the new type solver is default |

@@ -35,6 +35,7 @@ export type PlayerData = {
 	equipped: Loadout,
 	upgrades: Upgrades,
 	rebirths: number,
+	starterKitGranted: boolean,
 	index: { [Slot]: number }, -- highest plus ever reached per slot; survives rebirth
 	stats: {
 		kills: number,

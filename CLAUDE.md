@@ -6,10 +6,11 @@ Roblox merge game. Code lives in files (Rojo-synced), never authored inside Stud
 - `src/server/Services/*.luau` → ServerScriptService.Server.Services (one service per system)
 - `src/client/Controllers/*.luau` → StarterPlayerScripts.Client.Controllers
 - `src/shared/` → ReplicatedStorage.Shared (types, config, pure logic, remotes)
+- Non-service helpers: `src/server/{Data,Loot,Util}/`, `src/client/Util/` (not auto-loaded; required by services/controllers)
 - `Packages/` → Wally deps (ReplicatedStorage.Packages). Generated: don't edit.
 - `docs/ARCHITECTURE.md` → system map. **Read it first instead of scanning `src/`.** Update it when adding/removing a system.
 
-- `docs/DESIGN.md` → decisions (D1–D12), save schema, balance and pacing, milestone plan. Read the relevant section only.
+- `docs/DESIGN.md` → decisions (D1–D16), save schema, balance and pacing, milestone plan, known limitations (§5). Read the relevant section only; add new decisions/limitations there.
 - `src/server/Vendor/` → third-party (ProfileStore). Don't edit or read it in full.
 
 Services/Controllers are tables with optional `:Init()` (own state only: no yields, no calls to other services) and `:Start()` (may call others and yield).

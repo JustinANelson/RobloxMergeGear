@@ -71,6 +71,44 @@ function Formulas.baseItemsFor(plus: number): number
 	return 2 ^ (plus - 1)
 end
 
+-- Drops ------------------------------------------------------------------------
+
+-- Kinds in a stable order so a given roll always maps to the same kind.
+local DROP_KINDS: { string } = {}
+for kind in DropConfig.KindWeights :: any do
+	table.insert(DROP_KINDS, kind)
+end
+table.sort(DROP_KINDS)
+
+-- Weighted pick of which kind drops. r is uniform in [0, 1).
+function Formulas.rollDropKind(r: number): Types.ItemKind
+	local weights: { [string]: number } = DropConfig.KindWeights :: any
+	local total = 0
+	for _, kind in DROP_KINDS do
+		total += weights[kind]
+	end
+	local pick = r * total
+	for _, kind in DROP_KINDS do
+		pick -= weights[kind]
+		if pick < 0 then
+			return kind :: any
+		end
+	end
+	return DROP_KINDS[#DROP_KINDS] :: any
+end
+
+-- Plus of a drop: Drop Tier plus, + boss bonus, + 1 with the rebirth bonus chance. r is uniform in [0, 1).
+function Formulas.rollDropPlus(dropTierLevel: number, rebirths: number, isBoss: boolean, r: number): number
+	local plus = Formulas.dropPlus(dropTierLevel)
+	if isBoss then
+		plus += DropConfig.BossPlusBonus
+	end
+	if r < Formulas.bonusPlusChance(rebirths) then
+		plus += 1
+	end
+	return math.min(plus, GearConfig.MaxPlus)
+end
+
 -- Upgrades -------------------------------------------------------------------
 
 -- Cost of buying the next level, or nil when maxed.
