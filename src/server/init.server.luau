@@ -1,5 +1,12 @@
 --!strict
--- Server entry: requires every ModuleScript in Services, then calls :Init() on all, then :Start() on all.
+-- Server entry.
+-- Lifecycle contract for every module in Services:
+--   :Init()  - set up the service's OWN state, signals, remotes. Must not yield or call other services.
+--   :Start() - runs after every Init; may call other services, connect players, and yield.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+require(ReplicatedStorage.Shared.Net).setup()
+
 local Services = script:WaitForChild("Services")
 
 local loaded = {}

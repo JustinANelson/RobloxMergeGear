@@ -9,7 +9,10 @@ Roblox merge game. Code lives in files (Rojo-synced), never authored inside Stud
 - `Packages/` → Wally deps (ReplicatedStorage.Packages). Generated: don't edit.
 - `docs/ARCHITECTURE.md` → system map. **Read it first instead of scanning `src/`.** Update it when adding/removing a system.
 
-Services/Controllers are tables with optional `:Init()` (sync wiring, no yields) and `:Start()` (may yield).
+- `docs/DESIGN.md` → decisions (D1–D12), save schema, balance and pacing, milestone plan. Read the relevant section only.
+- `src/server/Vendor/` → third-party (ProfileStore). Don't edit or read it in full.
+
+Services/Controllers are tables with optional `:Init()` (own state only: no yields, no calls to other services) and `:Start()` (may call others and yield).
 
 ## Commands
 - `rokit install` – toolchain · `wally install` – deps
@@ -20,7 +23,10 @@ Services/Controllers are tables with optional `:Init()` (sync wiring, no yields)
 ## Rules
 - `--!strict` in every file. Use `task.*`, never `wait/spawn/delay`.
 - Server is authoritative: validate every remote arg (type, range, ownership, rate). Client only sends intents.
-- Tunables go in `src/shared/Config/`, not inline magic numbers.
+- Tunables go in `src/shared/Config/` (numbers only); every formula goes in `src/shared/Formulas.luau`.
+- The save must be valid at every moment: write state into data as it changes, never in leave/shutdown hooks.
+- Gold changes only through EconomyService (once it exists). Mutate data → `DataService:MarkDirty(player, topKey)`.
+- New remote: add it to `src/shared/Net.luau`, then add a row to `docs/ARCHITECTURE.md`.
 - Keep modules < ~300 lines; split by responsibility.
 
 ## Working efficiently (token budget)
