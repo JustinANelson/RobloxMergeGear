@@ -9,23 +9,25 @@ local RunService = game:GetService("RunService")
 export type EventName =
 	"DataSnapshot" -- S->C: full PlayerData once, after the profile loads
 	| "DataChanged" -- S->C: { [topLevelKey]: newValue }, batched once per frame
-	| "RequestMerge" -- C->S: (sourceItemId, targetItemId) drop one ground item onto another
-	| "RequestMove" -- C->S: (itemId, groundPoint: Vector3) drop a ground item on empty ground
-	| "RequestStore" -- C->S: (itemId) ground item -> storage
-	| "RequestWithdraw" -- C->S: (kind, quality, plus) storage -> ground near the hero
+	| "ItemGained" -- S->C: (kind, quality, plus, fromPosition: Vector3?) cosmetic loot-fly effect
+	| "Notify" -- S->C: (message, tone: "info" | "good" | "bad") toast
+	| "RequestMergeStack" -- C->S: (kind, quality, plus) merge every pair in that stack, no cascade
+	| "RequestMergeAll" -- C->S: () cascade-merge everything, equipped items included
+	| "RequestUpgradeEquipped" -- C->S: (slot) merge a stored copy into the equipped item
 	| "RequestEquipFromStorage" -- C->S: (kind, quality, plus) old item in that slot -> storage
-	| "RequestEquipFromGround" -- C->S: (itemId) old item in that slot -> storage
+	| "RequestEquipBest" -- C->S: () equip the highest-plus stored item per slot if it beats the current
 	| "RequestUnequip" -- C->S: (slot) equipped item -> storage
 
 local EVENTS: { EventName } = {
 	"DataSnapshot",
 	"DataChanged",
-	"RequestMerge",
-	"RequestMove",
-	"RequestStore",
-	"RequestWithdraw",
+	"ItemGained",
+	"Notify",
+	"RequestMergeStack",
+	"RequestMergeAll",
+	"RequestUpgradeEquipped",
 	"RequestEquipFromStorage",
-	"RequestEquipFromGround",
+	"RequestEquipBest",
 	"RequestUnequip",
 }
 
@@ -50,6 +52,11 @@ end
 function Net.event(name: EventName): RemoteEvent
 	local remote = cache[name]
 	if not remote then
+		-- Typed callers can't hit this; untyped or stale scripts (e.g. an out-of-sync copy in
+		-- Studio) can, and on the client they'd otherwise hang forever in WaitForChild.
+		if not table.find(EVENTS, name) then
+			error(`Net: unknown remote "{name}". It isn't in Net's EVENTS list; is this script stale?`, 2)
+		end
 		assert(RunService:IsClient(), `Net.event("{name}") called on the server before Net.setup()`)
 		remote = ReplicatedStorage:WaitForChild(FOLDER_NAME):WaitForChild(name) :: RemoteEvent
 		cache[name] = remote

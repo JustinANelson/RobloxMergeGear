@@ -28,8 +28,8 @@ local STAMP_INTERVAL = 30
 
 -- Design rule: the save must be valid at EVERY moment. There is deliberately no "on leave"
 -- hook: on server shutdown ProfileStore saves sessions on its own threads, and leave handlers
--- may never run. So services write state into data as it changes (e.g. ground items are
--- mirrored in data.ground), never "just before save".
+-- may never run. So services write state into data as it changes (e.g. a drop goes into
+-- data.inventory the moment it's rolled), never "just before save".
 local DataService = {
 	-- (player, data) after the profile is loaded, migrated and sent to the client.
 	ProfileLoaded = Signal.new() :: Signal.Signal<Player, PlayerData>,

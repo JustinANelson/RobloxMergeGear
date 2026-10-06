@@ -133,7 +133,7 @@ function EquipmentController:Start()
 	})
 	Ui.text({
 		LayoutOrder = 11,
-		Text = "Tip: drag an item from the ground onto your hero to equip it.",
+		Text = "Merge and equip items in the Forge.",
 		TextColor3 = Ui.Theme.muted,
 		TextSize = 12,
 		TextWrapped = true,

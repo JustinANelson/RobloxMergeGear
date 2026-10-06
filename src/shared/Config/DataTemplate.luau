@@ -4,13 +4,13 @@
 -- Renaming, moving or retyping a field DOES need one: bump schemaVersion and add a step
 -- in server/Data/Migrations.
 --
--- Reconcile recurses into nested tables, so map-like tables (equipped, inventory buckets,
--- ground) must stay EMPTY here: any entry in them would reappear on every join after the
+-- Reconcile recurses into nested tables, so map-like tables (equipped, inventory buckets)
+-- must stay EMPTY here: any entry in them would reappear on every join after the
 -- player removed it. One-time defaults go in server/Data/NewPlayer instead.
 local Types = require(script.Parent.Parent.Types)
 
 local template: Types.PlayerData = {
-	schemaVersion = 1,
+	schemaVersion = 2,
 	gold = 0,
 	inventory = {
 		Helmet = { Normal = {} },
@@ -18,7 +18,6 @@ local template: Types.PlayerData = {
 		Boots = { Normal = {} },
 		Sword = { Normal = {} },
 	},
-	ground = {},
 	equipped = {},
 	upgrades = { DropTier = 0, EnemyCap = 0, SpawnRate = 0, MagnetRange = 0 },
 	rebirths = 0,

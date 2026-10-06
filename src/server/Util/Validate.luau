@@ -3,7 +3,7 @@
 -- (after RateLimit) before touching any state.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local DropConfig = require(ReplicatedStorage.Shared.Config.Drops)
+local GearConfig = require(ReplicatedStorage.Shared.Config.Gear)
 
 local Validate = {}
 
@@ -25,11 +25,15 @@ function Validate.isFiniteVector3(value: unknown): boolean
 	return true
 end
 
--- The player's character is alive and within interaction range of `point`.
-function Validate.withinReach(player: Player, point: Vector3): boolean
+-- The player's character exists and is within `maxDistance` studs of `point`.
+function Validate.withinReach(player: Player, point: Vector3, maxDistance: number): boolean
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	return root ~= nil and (root.Position - point).Magnitude <= DropConfig.MaxInteractDistance
+	return root ~= nil and (root.Position - point).Magnitude <= maxDistance
+end
+
+function Validate.isSlot(value: unknown): boolean
+	return type(value) == "string" and table.find(GearConfig.Slots, value :: any) ~= nil
 end
 
 return Validate

@@ -122,4 +122,97 @@ function Gear.totalCount(inventory: Types.Inventory): number
 	return total
 end
 
+-- Forge operations (pure; the server applies them to the save, the client only previews) ------
+
+-- Records an item in the index (highest plus per slot). Returns true if it changed.
+function Gear.recordIndex(index: { [Types.Slot]: number }, item: Types.Item): boolean
+	local byString: { [string]: number } = index :: any -- union-key typing quirk, see Formulas
+	local slot = Gear.slotOf(item.kind)
+	if item.plus > (byString[slot] or 0) then
+		byString[slot] = item.plus
+		return true
+	end
+	return false
+end
+
+-- Merges every pair in one stack into plus + 1 (no cascade). Returns how many items it made.
+function Gear.mergeStack(inventory: Types.Inventory, item: Types.Item): number
+	if item.plus >= GearConfig.MaxPlus then
+		return 0
+	end
+	local made = Gear.count(inventory, item) // 2
+	if made > 0 then
+		Gear.addCount(inventory, item, -2 * made)
+		Gear.addCount(inventory, Gear.mergeResult(item), made)
+	end
+	return made
+end
+
+-- Merges a stored copy into the equipped item of `slot` (+n and +n -> equipped +n+1).
+-- Returns the upgraded item, or nil if there's no matching stored copy.
+function Gear.upgradeEquipped(inventory: Types.Inventory, equipped: Types.Loadout, slot: Types.Slot): Types.Item?
+	local byString: { [string]: Types.Item } = equipped :: any
+	local current = byString[slot]
+	if not current or current.plus >= GearConfig.MaxPlus or Gear.count(inventory, current) < 1 then
+		return nil
+	end
+	Gear.addCount(inventory, current, -1)
+	local upgraded = Gear.mergeResult(current)
+	byString[slot] = upgraded
+	return upgraded
+end
+
+export type MergeSummary = { merges: number, made: { Stack } }
+
+-- Merge All: walks each kind/quality from its lowest plus upward, so results keep merging
+-- (cascade). At each plus, the equipped item first absorbs a matching stored copy, then the
+-- remaining copies pair up. That keeps the equipped item as high as possible.
+-- Mutates inventory and equipped. `made` lists every item created (for index and toasts).
+function Gear.mergeAll(inventory: Types.Inventory, equipped: Types.Loadout): MergeSummary
+	local summary: MergeSummary = { merges = 0, made = {} }
+	local byString: { [string]: Types.Item } = equipped :: any
+	for kind, byQuality in inventory :: any do
+		local slot: Types.Slot = Gear.slotOf(kind :: any)
+		for quality, counts in byQuality do
+			local lowest = math.huge
+			for key, count in counts do
+				if count > 0 then
+					lowest = math.min(lowest, tonumber(key) :: number)
+				end
+			end
+			if lowest == math.huge then
+				continue
+			end
+			for plus = lowest, GearConfig.MaxPlus - 1 do
+				local current = byString[slot]
+				if current and current.kind == kind and current.quality == quality and current.plus == plus then
+					local upgraded = Gear.upgradeEquipped(inventory, equipped, slot)
+					if upgraded then
+						summary.merges += 1
+						table.insert(summary.made, { item = upgraded, count = 1 })
+					end
+				end
+				local item: Types.Item = { kind = kind, quality = quality, plus = plus }
+				local made = Gear.mergeStack(inventory, item)
+				if made > 0 then
+					summary.merges += made
+					table.insert(summary.made, { item = Gear.mergeResult(item), count = made })
+				end
+			end
+		end
+	end
+	return summary
+end
+
+-- The best stored item for a slot (highest plus; ties keep the first found), or nil.
+function Gear.bestStored(inventory: Types.Inventory, slot: Types.Slot): Types.Item?
+	local best: Types.Item? = nil
+	for _, stack in Gear.stacks(inventory) do
+		if Gear.slotOf(stack.item.kind) == slot and (best == nil or stack.item.plus > best.plus) then
+			best = stack.item
+		end
+	end
+	return best
+end
+
 return Gear

@@ -6,11 +6,11 @@ Roblox merge game. Code lives in files (Rojo-synced), never authored inside Stud
 - `src/server/Services/*.luau` → ServerScriptService.Server.Services (one service per system)
 - `src/client/Controllers/*.luau` → StarterPlayerScripts.Client.Controllers
 - `src/shared/` → ReplicatedStorage.Shared (types, config, pure logic, remotes)
-- Non-service helpers: `src/server/{Data,Loot,Util}/`, `src/client/Util/` (`Ui` kit for panels, `Fx`) — not auto-loaded; required by services/controllers
+- Non-service helpers: `src/server/{Data,Util}/`, `src/client/Util/` (`Ui` kit for panels, `Fx`, `Toast`) — not auto-loaded; required by services/controllers
 - `Packages/` → Wally deps (ReplicatedStorage.Packages). Generated: don't edit.
 - `docs/ARCHITECTURE.md` → system map. **Read it first instead of scanning `src/`.** Update it when adding/removing a system.
 
-- `docs/DESIGN.md` → decisions (D1–D20), save schema, balance and pacing, milestone plan, known limitations (§5). Read the relevant section only; add new decisions/limitations there.
+- `docs/DESIGN.md` → decisions (D1–D24), design-change history (§6), save schema, balance and pacing, milestone plan, known limitations (§5). Read the relevant section only; add new decisions/limitations there.
 - `src/server/Vendor/` → third-party (ProfileStore). Don't edit or read it in full.
 
 Services/Controllers are tables with optional `:Init()` (own state only: no yields, no calls to other services) and `:Start()` (may call others and yield).
@@ -26,7 +26,7 @@ Services/Controllers are tables with optional `:Init()` (own state only: no yiel
 - Server is authoritative: every `Request*` handler starts with `RateLimit.check`, then validates args with `server/Util/Validate` / `Gear.isValidItem`, ownership and reach. Client only sends intents.
 - Tunables go in `src/shared/Config/` (numbers only); every formula goes in `src/shared/Formulas.luau`.
 - The save must be valid at every moment: write state into data as it changes, never in leave/shutdown hooks.
-- Gold changes only through `EconomyService:AddGold/SpendGold`. Item moves only through LootService/InventoryService APIs. Mutate data → `DataService:MarkDirty(player, topKey)`.
+- Gold changes only through `EconomyService:AddGold/SpendGold`. New items only via `LootService:GiveItem`; moves and merges only via InventoryService (rules in `Shared/Gear`). Mutate data → `DataService:MarkDirty(player, topKey)`.
 - New remote: add it to `src/shared/Net.luau`, then add a row to `docs/ARCHITECTURE.md`.
 - Keep modules < ~300 lines; split by responsibility.
 

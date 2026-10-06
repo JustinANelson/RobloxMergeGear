@@ -1,5 +1,6 @@
 --!strict
--- Placeholder look of ground items. Swap shapes for meshes later without touching gameplay code.
+-- Placeholder look of items: the loot-fly effect shapes and the color of each plus band.
+-- Swap shapes for meshes later without touching gameplay code.
 local Types = require(script.Parent.Parent.Types)
 local TableUtil = require(script.Parent.Parent.Util.TableUtil)
 
@@ -22,6 +23,4 @@ return TableUtil.deepFreeze({
 		{ maxPlus = 15, color = Color3.fromRGB(255, 160, 50) },
 		{ maxPlus = math.huge, color = Color3.fromRGB(255, 70, 70) },
 	} :: { { maxPlus: number, color: Color3 } },
-
-	LabelMaxDistance = 90, -- studs at which the "+N" label stops rendering
 })

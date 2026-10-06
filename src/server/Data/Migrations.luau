@@ -10,13 +10,28 @@ local DataTemplate = require(ReplicatedStorage.Shared.Config.DataTemplate)
 
 local CURRENT = DataTemplate.schemaVersion
 
+-- Steps use raw table operations only (no Gear/Formulas): shared code may change later, but a
+-- shipped step must keep doing exactly what it did.
 local STEPS: { [number]: (data: any) -> () } = {
-	-- Example for when Phase 3 quality tiers ship: nothing to do, because the inventory is already
-	-- bucketed by quality. Example of a real step:
-	-- [1] = function(data) -- v1 -> v2: rename stats.merges to stats.mergeCount
-	-- 	data.stats.mergeCount = data.stats.merges
-	-- 	data.stats.merges = nil
-	-- end,
+	-- v1 -> v2 (Forge rework, DESIGN D21): items no longer lie on the ground. Fold the old
+	-- `ground` counts into storage, then drop the field.
+	[1] = function(data)
+		local ground = data.ground
+		if type(ground) == "table" then
+			data.inventory = data.inventory or {}
+			for kind, byQuality in ground do
+				data.inventory[kind] = data.inventory[kind] or {}
+				for quality, counts in byQuality do
+					local target = data.inventory[kind][quality] or {}
+					data.inventory[kind][quality] = target
+					for plusKey, count in counts do
+						target[plusKey] = (target[plusKey] or 0) + count
+					end
+				end
+			end
+		end
+		data.ground = nil
+	end,
 }
 
 assert(#STEPS == CURRENT - 1, `Migrations: schemaVersion is {CURRENT} but there are {#STEPS} steps`)

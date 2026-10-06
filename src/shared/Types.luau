@@ -28,10 +28,7 @@ export type Upgrades = { DropTier: number, EnemyCap: number, SpawnRate: number, 
 export type PlayerData = {
 	schemaVersion: number,
 	gold: number,
-	inventory: Inventory, -- storage counts
-	-- Mirror of the items physically lying in the player's zone, updated on every drop/merge/pickup.
-	-- Positions aren't saved: on join these are re-dropped (up to the ground cap, rest to storage).
-	ground: Inventory,
+	inventory: Inventory, -- the bag: every item the player owns that isn't equipped
 	equipped: Loadout,
 	upgrades: Upgrades,
 	rebirths: number,

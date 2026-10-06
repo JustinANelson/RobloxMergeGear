@@ -4,7 +4,7 @@
 --   /droptier <level>     set the Drop Tier upgrade level
 --   /equip <kind> <plus>  equip an item, e.g. /equip sword 5
 --   /unequip              move all equipped gear to storage
---   /drop <kind> <plus> [count]  give items (ground first, then storage), e.g. /drop sword 1 8
+--   /drop <kind> <plus> [count]  add items to your bag, e.g. /drop sword 1 8
 --   /resetdata            wipe your save back to defaults
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -104,15 +104,12 @@ function DebugService:Start()
 			plus = math.clamp(math.floor(plus), 1, GearConfig.MaxPlus),
 		}
 		for _ = 1, math.clamp(math.floor(tonumber(args[3]) or 1), 1, 100) do
-			LootService:GiveItem(player, table.clone(item))
+			LootService:GiveItem(player, table.clone(item), nil)
 		end
 	end)
 
 	command("resetdata", function(player)
-		-- Physical items first, so the world matches the fresh (empty) data.ground.
-		LootService:ClearPlayer(player)
 		DataService:ResetData(player)
-		LootService:Populate(player)
 	end)
 
 	folder.Parent = TextChatService

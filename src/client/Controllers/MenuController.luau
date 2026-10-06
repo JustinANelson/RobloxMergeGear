@@ -1,7 +1,6 @@
 --!strict
 -- Left-side menu bar plus the panel windows it opens. One panel is open at a time.
--- Panels register themselves from their own Start (AddPanel). Menu buttons can also act as
--- drop targets for dragged items (IsOver / SetDropHover), e.g. the Storage button.
+-- Panels register themselves from their own Start (AddPanel).
 local Players = game:GetService("Players")
 
 local Ui = require(script.Parent.Parent.Util.Ui)
@@ -44,7 +43,6 @@ function MenuController:AddPanel(name: string, order: number, window: GuiObject,
 	button.Name = name
 	button.LayoutOrder = order
 	button.Size = UDim2.fromOffset(84, 44)
-	Ui.new("UIStroke", { Name = "DropStroke", Color = Ui.Theme.good, Thickness = 3, Enabled = false, Parent = button })
 	button.Parent = bar
 
 	window.Visible = false
@@ -81,29 +79,6 @@ end
 
 function MenuController:IsOpen(name: string): boolean
 	return openName == name
-end
-
--- Whether a screen position (InputObject.Position) is over that panel's menu button.
-function MenuController:IsOver(name: string, position: Vector3): boolean
-	local panel = panels[name]
-	if not panel then
-		return false
-	end
-	local topLeft = panel.button.AbsolutePosition
-	local size = panel.button.AbsoluteSize
-	return position.X >= topLeft.X
-		and position.X <= topLeft.X + size.X
-		and position.Y >= topLeft.Y
-		and position.Y <= topLeft.Y + size.Y
-end
-
--- Outlines a menu button while a dragged item hovers over it.
-function MenuController:SetDropHover(name: string, hovering: boolean)
-	local panel = panels[name]
-	local stroke = panel and panel.button:FindFirstChild("DropStroke")
-	if stroke and stroke:IsA("UIStroke") then
-		stroke.Enabled = hovering
-	end
 end
 
 return MenuController
